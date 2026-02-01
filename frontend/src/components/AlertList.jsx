@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import  { useState, useEffect } from 'react'
 
 export default function AlertList({ alerts = [], showEscalate = false, onEscalate }){
   const [escalatedIds, setEscalatedIds] = useState(() => alerts.filter(a => a.escalated).map(a => a.id))

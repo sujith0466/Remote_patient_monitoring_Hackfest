@@ -51,14 +51,38 @@ def seed(force=False):
 
         db.session.commit()
 
-        # create patients
+        # Create API tokens for demo users (if not set)
+        import secrets
+        if not nurse.api_token:
+            nurse.api_token = secrets.token_urlsafe(24)
+        if not doctor.api_token:
+            doctor.api_token = secrets.token_urlsafe(24)
+        db.session.commit()
+
+        # create patients with demo demographic fields
         patients = []
+        demo_specs = {
+            'Patient A (Demo)': {'age': 72, 'sex': 'Female', 'room': '101A', 'weight_kg': 68, 'notes': 'Chronic hypertension (stable)'},
+            'Patient B (Demo)': {'age': 58, 'sex': 'Male', 'room': '102B', 'weight_kg': 82, 'notes': 'COPD (baseline reduced SpO₂)'},
+            'Patient C (Demo)': {'age': 45, 'sex': 'Female', 'room': '103C', 'weight_kg': 61, 'notes': 'No known chronic conditions'}
+        }
         for pname in ['Patient A (Demo)', 'Patient B (Demo)', 'Patient C (Demo)']:
             p = Patient.query.filter_by(name=pname).first()
             if not p:
-                p = Patient(name=pname)
+                spec = demo_specs.get(pname, {})
+                p = Patient(name=pname, age=spec.get('age'), sex=spec.get('sex'), room=spec.get('room'), weight_kg=spec.get('weight_kg'), notes=spec.get('notes'))
                 db.session.add(p)
                 db.session.commit()
+            else:
+                # ensure demo fields exist for existing records
+                spec = demo_specs.get(pname, {})
+                updated = False
+                for k, v in spec.items():
+                    if getattr(p, k) != v:
+                        setattr(p, k, v)
+                        updated = True
+                if updated:
+                    db.session.commit()
             patients.append(p)
 
         # create initial vitals (some normal, some that will create alerts)

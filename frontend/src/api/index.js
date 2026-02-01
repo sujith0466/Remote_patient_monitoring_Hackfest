@@ -1,7 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000'
 
-async function fetchJSON(url, opts) {
-  const res = await fetch(url, opts)
+async function fetchJSON(url, opts = {}) {
+  // include Authorization header if dev token is present in localStorage
+  const headers = opts.headers ? { ...opts.headers } : {}
+  const token = localStorage.getItem('CAREWATCH_TOKEN')
+  if (token) {
+    headers['Authorization'] = `Token ${token}`
+  }
+  const res = await fetch(url, { ...opts, headers })
   if (!res.ok) {
     const txt = await res.text()
     throw new Error(`Request failed ${res.status}: ${txt}`)
@@ -9,8 +15,20 @@ async function fetchJSON(url, opts) {
   return res.json()
 }
 
+export function setAuthToken(token) {
+  if (token) {
+    localStorage.setItem('CAREWATCH_TOKEN', token)
+  } else {
+    localStorage.removeItem('CAREWATCH_TOKEN')
+  }
+}
+
+export function getAuthToken() {
+  return localStorage.getItem('CAREWATCH_TOKEN')
+}
+
 export async function fetchVitals(limit = 50) {
-  const data = await fetchJSON(`${API_BASE}/vitals?limit=${limit}`)
+  const data = await fetchJSON(`${API_BASE}/patients/vitals?limit=${limit}`)
   // data is list of vitals sorted desc; convert to series aggregated by time (simple approach: take last N samples)
   const items = data.slice().reverse() // ascending
   const timestamps = items.map(i => new Date(i.timestamp).toLocaleTimeString())
@@ -22,6 +40,14 @@ export async function fetchVitals(limit = 50) {
 
 export async function fetchPatients() {
   return fetchJSON(`${API_BASE}/patients`)
+}
+
+export async function fetchMe() {
+  return fetchJSON(`${API_BASE}/users/me`)
+}
+
+export async function updatePatient(patientId, payload) {
+  return fetchJSON(`${API_BASE}/patients/${patientId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
 }
 
 export async function fetchPatientLatestVital(patientId) {

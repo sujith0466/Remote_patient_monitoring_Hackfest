@@ -1,0 +1,47 @@
+# Render manifest for CareWatch (Backend + Frontend)
+# Update branch, env var values and regions as needed before deploying.
+
+services:
+  - type: web
+    name: carewatch-backend
+    env: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: bash -lc "python -c 'from app import create_app, db; app=create_app(); ctx=app.app_context(); ctx.push(); db.create_all(); ctx.pop()' && gunicorn app:app --bind 0.0.0.0:$PORT --workers 2"
+    envVars:
+      - key: DATABASE_URL
+        value: ""
+        sync: false
+      - key: CORS_ORIGINS
+        value: "https://your-frontend.onrender.com"
+        sync: false
+      - key: SMTP_SERVER
+        value: ""
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+        sync: false
+      - key: SMTP_USERNAME
+        value: ""
+        sync: false
+      - key: SMTP_PASSWORD
+        value: ""
+        sync: false
+      - key: EMAIL_FROM
+        value: ""
+        sync: false
+      - key: ALERT_EMAIL_RECIPIENTS
+        value: ""
+        sync: false
+
+staticSites:
+  - name: carewatch-frontend
+    branch: main
+    buildCommand: cd frontend && npm ci && npm run build
+    publishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE
+        value: "https://your-backend.onrender.com"
+        sync: false

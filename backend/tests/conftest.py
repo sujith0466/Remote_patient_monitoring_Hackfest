@@ -44,9 +44,15 @@ def runner(app_instance):
 @pytest.fixture
 def demo_user_and_patient(app_instance):
     from app import db
+    import secrets
     nurse = User(name='Test Nurse', role='nurse')
     doctor = User(name='Test Doctor', role='doctor')
     db.session.add_all([nurse, doctor])
+    db.session.commit()
+
+    # assign API tokens for tests
+    nurse.api_token = secrets.token_urlsafe(24)
+    doctor.api_token = secrets.token_urlsafe(24)
     db.session.commit()
 
     p = Patient(name='Test Patient')

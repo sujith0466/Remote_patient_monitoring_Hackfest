@@ -4,7 +4,13 @@ import VitalsChart from '../components/VitalsChart'
 import ParameterCharts from '../components/ParameterCharts'
 import AlertList from '../components/AlertList'
 import PatientVitalsList from '../components/PatientVitalsList'
-import { fetchVitals, fetchPatients, fetchAlerts, fetchPatientLatestVital, escalateAlert } from '../api'
+import {
+  fetchVitals,
+  fetchPatients,
+  fetchAlerts,
+  fetchPatientLatestVital,
+  escalateAlert
+} from '../api'
 
 export default function NurseDashboard(){
   const [vitalsData, setVitalsData] = useState({ timestamps: [], heartRate: [], temperature: [], spo2: [] })
@@ -19,14 +25,15 @@ export default function NurseDashboard(){
         const [vitals, patientsList, alertsList] = await Promise.all([
           fetchVitals(30),
           fetchPatients(),
-          fetchAlerts({ role: 'nurse' })
+          fetchAlerts({ role: 'nurse' }) // ✅ explicit nurse role
         ])
 
-        // for each patient, fetch latest vital
-        const patientsWithVitals = await Promise.all(patientsList.map(async (p) => {
-          const latest = await fetchPatientLatestVital(p.id)
-          return { ...p, latest }
-        }))
+        const patientsWithVitals = await Promise.all(
+          patientsList.map(async (p) => {
+            const latest = await fetchPatientLatestVital(p.id)
+            return { ...p, latest }
+          })
+        )
 
         setVitalsData(vitals)
         setPatients(patientsWithVitals)
@@ -41,11 +48,12 @@ export default function NurseDashboard(){
 
   const handleEscalate = async (id) => {
     try{
-      // using a dummy nurse id 1 for now; later integrate auth
-      const res = await escalateAlert(id, 1)
-      // backend returns { message, alert }
+      const res = await escalateAlert(id, 1) // demo nurse id
       const updated = res.alert || res
-      setAlerts((prev) => prev.map(a => a.id === id ? { ...a, ...updated } : a))
+
+      setAlerts((prev) =>
+        prev.map(a => a.id === id ? { ...a, ...updated } : a)
+      )
     }catch(err){
       console.error('Failed to escalate', err)
     }
@@ -63,13 +71,33 @@ export default function NurseDashboard(){
 
           <div className="bg-white p-4 rounded shadow">
             <h2 className="text-lg font-semibold mb-2">Patients</h2>
-            <PatientVitalsList patients={patients} />
+            <PatientVitalsList
+              patients={patients}
+              onUpdated={async () => {
+                try{
+                  const patientsList = await fetchPatients()
+                  const patientsWithVitals = await Promise.all(
+                    patientsList.map(async (p) => {
+                      const latest = await fetchPatientLatestVital(p.id)
+                      return { ...p, latest }
+                    })
+                  )
+                  setPatients(patientsWithVitals)
+                }catch(e){
+                  console.error('Failed to reload patients', e)
+                }
+              }}
+            />
           </div>
         </div>
+
         <div>
           <div className="bg-white p-4 rounded shadow">
             <h2 className="text-lg font-semibold mb-2">Alerts</h2>
-            {loading ? <p className="text-sm text-gray-500">Loading...</p> : <AlertList alerts={alerts} showEscalate onEscalate={handleEscalate} />}
+            {loading
+              ? <p className="text-sm text-gray-500">Loading...</p>
+              : <AlertList alerts={alerts} showEscalate onEscalate={handleEscalate} />
+            }
           </div>
         </div>
       </div>

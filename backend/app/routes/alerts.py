@@ -5,45 +5,31 @@ from datetime import datetime, timezone
 
 bp = Blueprint('alerts', __name__, url_prefix='/alerts')
 
+from app.utils.auth import get_current_user, require_roles
+
 
 def _resolve_request_role():
-    """Resolve role from headers or query params or user id lookup.
-
-    Priority:
-      1. X-User-Id header or user_id query param -> lookup User in DB
-      2. X-User-Role header or role query param
-      returns role string or None
-    """
-    uid = request.headers.get('X-User-Id') or request.args.get('user_id')
-    if uid:
-        try:
-            u = db.session.get(User, int(uid))
-            if u:
-                return u.role
-        except Exception:
-            pass
-    role = request.headers.get('X-User-Role') or request.args.get('role')
-    return role
+    """Legacy helper (kept for backward compat)."""
+    user = get_current_user()
+    if user:
+        return user.role
+    return request.headers.get('X-User-Role') or request.args.get('role')
 
 
 @bp.route('/', methods=['GET'])
 def list_alerts():
-    """List alerts.
-
+    """
     Query params:
-      - escalated=true  -> returns only escalated alerts (backwards compatible)
-      - role=nurse|doctor -> if role=doctor returns only escalated alerts (doctors see escalated alerts only); role=nurse returns all alerts
+      - escalated=true
+      - role=nurse|doctor
     """
     q = Alert.query
-
-    # Determine requester role from headers/query/user id (basic, no auth)
     requester_role = _resolve_request_role()
 
     role = request.args.get('role')
     escalated_param = request.args.get('escalated') == 'true'
 
     if role == 'doctor' or escalated_param:
-        # Only doctors are allowed to request escalated alerts
         if requester_role != 'doctor':
             return jsonify({'error': 'forbidden: only doctors can view escalated alerts'}), 403
         q = q.filter_by(escalated=True)
@@ -53,25 +39,17 @@ def list_alerts():
 
 
 @bp.route('/escalated', methods=['GET'])
+@require_roles('doctor')
 def list_escalated_alerts():
-    """Return only escalated alerts (for doctors).
-
-    Basic role check (no auth): require the request to indicate a doctor role via header `X-User-Role: doctor` or `X-User-Id` that maps to a user with role 'doctor'.
-    """
-    role = _resolve_request_role()
-    if role != 'doctor':
-        return jsonify({'error': 'forbidden: only doctors can view escalated alerts'}), 403
-
+    """Doctor-only escalated alerts."""
     alerts = Alert.query.filter_by(escalated=True).order_by(Alert.created_at.desc()).all()
     return jsonify([a.to_dict() for a in alerts])
 
 
 @bp.route('/<int:alert_id>/escalate', methods=['POST'])
+@require_roles('nurse')
 def escalate_alert(alert_id):
-    """Mark a critical alert as escalated by a nurse. Expects JSON { "escalated_by": <user_id> }.
-
-    Only alerts with severity 'critical' can be escalated. Escalation marks the alert so doctors can see it.
-    """
+    """Escalate a critical alert (nurse only)."""
     a = db.session.get(Alert, alert_id)
     if not a:
         return jsonify({'error': 'alert not found'}), 404
@@ -84,12 +62,7 @@ def escalate_alert(alert_id):
 
     payload = request.json or {}
     escalated_by = payload.get('escalated_by')
-    header_role = request.headers.get('X-User-Role')
-    header_user_id = request.headers.get('X-User-Id')
 
-    # Accept escalation if either:
-    #  - escalated_by is provided and maps to a user with role 'nurse', OR
-    #  - header 'X-User-Role' == 'nurse' (optional X-User-Id header can be used as escalated_by)
     if escalated_by:
         try:
             nurse = db.session.get(User, int(escalated_by))
@@ -98,43 +71,27 @@ def escalate_alert(alert_id):
         except Exception:
             return jsonify({'error': 'invalid escalated_by id'}), 400
     else:
-        if header_role == 'nurse':
-            # allow anonymous nurse escalation; prefer header user id if provided
-            if header_user_id:
-                try:
-                    nu = db.session.get(User, int(header_user_id))
-                    if nu and nu.role == 'nurse':
-                        escalated_by = int(header_user_id)
-                    else:
-                        escalated_by = None
-                except Exception:
-                    escalated_by = None
-            else:
-                escalated_by = None
-        else:
-            return jsonify({'error': 'escalated_by (nurse id) is required or provide X-User-Role: nurse header'}), 400
+        user = get_current_user()
+        escalated_by = user.id
 
     a.escalated = True
     a.escalated_at = datetime.now(timezone.utc)
     a.escalated_by = escalated_by
-
     db.session.commit()
 
-    # send notification to doctors (background thread so request isn't delayed)
+    # background notification
     try:
         from threading import Thread
         from flask import current_app
         from app.utils.mailer import send_escalation_email
 
-        # send minimal alert dict to mailer in background
         app_obj = current_app._get_current_object()
-        alert_payload = a.to_dict()
-        Thread(target=send_escalation_email, args=(app_obj, alert_payload), daemon=True).start()
+        Thread(
+            target=send_escalation_email,
+            args=(app_obj, a.to_dict()),
+            daemon=True
+        ).start()
     except Exception:
-        # log but do not fail the request
-        try:
-            current_app.logger.exception('Failed to start email notification thread')
-        except Exception:
-            pass
+        pass
 
     return jsonify({'message': 'escalated', 'alert': a.to_dict()})

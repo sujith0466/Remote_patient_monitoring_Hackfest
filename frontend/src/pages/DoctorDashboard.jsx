@@ -33,6 +33,16 @@ export default function DoctorDashboard(){
     }
 
     load()
+
+    // listen for patient updates triggered by nurse edits
+    const handler = async () => {
+      try{
+        const patientsRes = await fetchPatients()
+        setPatients(patientsRes)
+      }catch(e){ console.error('Failed to refresh patients', e) }
+    }
+    window.addEventListener('patients:updated', handler)
+    return () => window.removeEventListener('patients:updated', handler)
   }, [])
 
   return (

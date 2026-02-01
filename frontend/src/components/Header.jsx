@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import DevAuth from './DevAuth'
 
 export default function Header(){
   return (
@@ -10,6 +11,9 @@ export default function Header(){
           <Link to="/nurse" className="text-blue-600 hover:underline">Nurse Dashboard</Link>
           <Link to="/doctor" className="text-blue-600 hover:underline">Doctor Dashboard</Link>
         </nav>
+        <div>
+          <DevAuth />
+        </div>
       </div>
     </header>
   )

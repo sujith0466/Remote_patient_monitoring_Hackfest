@@ -52,8 +52,8 @@ def test_escalation_and_visibility(client, demo_user_and_patient, mocker):
     data = res.get_json()
     assert data['alert']['escalated'] is True
 
-    # doctor can fetch escalated alerts
-    res = client.get('/alerts/escalated', query_string={'role': 'doctor'})
+    # doctor can fetch escalated alerts (authenticated)
+    res = client.get('/alerts/escalated', headers={'X-User-Id': str(doctor.id)})
     assert res.status_code == 200
     es = res.get_json()
     assert any(a['id'] == alert_id for a in es)
