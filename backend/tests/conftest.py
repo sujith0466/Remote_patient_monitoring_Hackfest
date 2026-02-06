@@ -1,6 +1,7 @@
 import os
 import sys
 import pytest
+import unittest.mock
 
 # Ensure project root (backend) is on sys.path so `import app` resolves during tests
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -60,3 +61,19 @@ def demo_user_and_patient(app_instance):
     db.session.commit()
 
     return { 'nurse': nurse, 'doctor': doctor, 'patient': p }
+
+
+# Fallback for environments where pytest-mock isn't installed/enabled.
+# If pytest-mock is present, it will provide its own `mocker` fixture and this
+# fixture will simply be ignored (fixture name collision is resolved by plugin
+# precedence). In practice, this keeps tests runnable with minimal deps.
+@pytest.fixture
+def mocker(request):
+    class _Mocker:
+        def patch(self, target, *args, **kwargs):
+            p = unittest.mock.patch(target, *args, **kwargs)
+            obj = p.start()
+            request.addfinalizer(p.stop)
+            return obj
+
+    return _Mocker()

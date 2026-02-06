@@ -1,18 +1,29 @@
 import { Navigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { getDashboardPath } from "../utils/navigation"; // Centralized navigation logic
 
 export default function ProtectedRoute({ role, children }) {
-  const storedRole = localStorage.getItem("carewatch_role");
+  const { isAuthenticated, user, loading } = useAuth();
 
-  // No role selected → go to role selection
-  if (!storedRole) {
-    return <Navigate to="/select-role" replace />;
+  // If still loading auth state, render nothing or a loading spinner
+  if (loading) {
+    return null; // Or a loading component
   }
 
-  // Wrong role trying to access page
-  if (storedRole !== role) {
-    return <Navigate to={`/${storedRole}`} replace />;
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
 
-  // ✅ Authorized → render page
+  // If authenticated but role doesn't match, redirect to their own valid dashboard
+  const userRole = user?.role;
+  const requiredRoles = Array.isArray(role) ? role : [role];
+
+  if (!requiredRoles.includes(userRole)) {
+    const userDashboardPath = getDashboardPath(userRole);
+    return <Navigate to={userDashboardPath} replace />;
+  }
+
+  // If authenticated and role matches, render children
   return children;
 }

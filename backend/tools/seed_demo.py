@@ -25,11 +25,11 @@ def seed(force=False):
 
         if force:
             # remove any existing demo users/patients/alerts/vitals with those names
-            users_to_remove = User.query.filter(User.name.in_([demo_nurse_name, demo_doctor_name])).all()
+            users_to_remove = User.query.filter(User.email.in_(['nurse@example.com', 'doctor@example.com'])).all()
             for u in users_to_remove:
                 db.session.delete(u)
 
-            patients_to_remove = Patient.query.filter(Patient.name.in_(['Patient A (Demo)', 'Patient B (Demo)', 'Patient C (Demo)'])).all()
+            patients_to_remove = Patient.query.filter(Patient.name.in_(['Ramesh Kumar', 'Anita Sharma', 'Rahul Verma'])).all()
             for p in patients_to_remove:
                 # cascade delete is not configured; remove related vitals and alerts first
                 PatientVital.query.filter_by(patient_id=p.id).delete()
@@ -39,15 +39,31 @@ def seed(force=False):
             db.session.commit()
 
         # create users
-        nurse = User.query.filter_by(name=demo_nurse_name).first()
+        nurse = User.query.filter_by(email='nurse@example.com').first()
         if not nurse:
-            nurse = User(name=demo_nurse_name, role='nurse')
+            nurse = User(name='Demo Nurse', email='nurse@example.com', role='nurse')
+            nurse.set_password('password') # Set a default password for demo
             db.session.add(nurse)
 
-        doctor = User.query.filter_by(name=demo_doctor_name).first()
+        doctor = User.query.filter_by(email='doctor@example.com').first()
         if not doctor:
-            doctor = User(name=demo_doctor_name, role='doctor')
+            doctor = User(name='Demo Doctor', email='doctor@example.com', role='doctor')
+            doctor.set_password('password') # Set a default password for demo
             db.session.add(doctor)
+
+        # Add new nurse@gmail.com
+        nurse_gmail = User.query.filter_by(email='nurse@gmail.com').first()
+        if not nurse_gmail:
+            nurse_gmail = User(name='Demo Nurse Gmail', email='nurse@gmail.com', role='nurse')
+            nurse_gmail.set_password('nurse1234')
+            db.session.add(nurse_gmail)
+
+        # Add new doctor@gmail.com
+        doctor_gmail = User.query.filter_by(email='doctor@gmail.com').first()
+        if not doctor_gmail:
+            doctor_gmail = User(name='Demo Doctor Gmail', email='doctor@gmail.com', role='doctor')
+            doctor_gmail.set_password('doctor1234')
+            db.session.add(doctor_gmail)
 
         db.session.commit()
 
@@ -59,14 +75,16 @@ def seed(force=False):
             doctor.api_token = secrets.token_urlsafe(24)
         db.session.commit()
 
-        # create patients with demo demographic fields
+        # create patients with demo demographic fields and specific conditions
         patients = []
         demo_specs = {
-            'Patient A (Demo)': {'age': 72, 'sex': 'Female', 'room': '101A', 'weight_kg': 68, 'notes': 'Chronic hypertension (stable)'},
-            'Patient B (Demo)': {'age': 58, 'sex': 'Male', 'room': '102B', 'weight_kg': 82, 'notes': 'COPD (baseline reduced SpO₂)'},
-            'Patient C (Demo)': {'age': 45, 'sex': 'Female', 'room': '103C', 'weight_kg': 61, 'notes': 'No known chronic conditions'}
+            'Ramesh Kumar': {'age': 72, 'sex': 'Male', 'room': '201A', 'weight_kg': 75, 'notes': 'History of cardiac issues.'},
+            'Anita Sharma': {'age': 58, 'sex': 'Female', 'room': '202B', 'weight_kg': 62, 'notes': 'Recent respiratory infection.'},
+            'Rahul Verma': {'age': 45, 'sex': 'Male', 'room': '203C', 'weight_kg': 80, 'notes': 'Post-operative recovery.'}
         }
-        for pname in ['Patient A (Demo)', 'Patient B (Demo)', 'Patient C (Demo)']:
+        patient_names = ['Ramesh Kumar', 'Anita Sharma', 'Rahul Verma']
+
+        for pname in patient_names:
             p = Patient.query.filter_by(name=pname).first()
             if not p:
                 spec = demo_specs.get(pname, {})
@@ -85,28 +103,31 @@ def seed(force=False):
                     db.session.commit()
             patients.append(p)
 
-        # create initial vitals (some normal, some that will create alerts)
-        # Patient A: high temp (critical)
-        va, aa = create_vital_and_alerts(patients[0].id, heart_rate=78, temperature=38.5, spo2=97)
-        print('Created for Patient A:', va, aa)
+        # create initial vitals to trigger specific alerts
+        # Ramesh Kumar (critical): high temp and low spo2
+        print('Creating vitals for Ramesh Kumar (critical)...')
+        va, aa = create_vital_and_alerts(patients[0].id, heart_rate=90, temperature=38.6, spo2=88)
+        print('Created for Ramesh Kumar:', va, aa)
 
-        # Patient B: low spo2 (critical)
-        vb, ab = create_vital_and_alerts(patients[1].id, heart_rate=65, temperature=36.8, spo2=88)
-        print('Created for Patient B:', vb, ab)
+        # Anita Sharma (warning): high heart rate
+        print('Creating vitals for Anita Sharma (warning)...')
+        vb, ab = create_vital_and_alerts(patients[1].id, heart_rate=115, temperature=37.1, spo2=95)
+        print('Created for Anita Sharma:', vb, ab)
 
-        # Patient C: mild warning HR
-        vc, ac = create_vital_and_alerts(patients[2].id, heart_rate=110, temperature=37.0, spo2=96)
-        print('Created for Patient C:', vc, ac)
+        # Rahul Verma (stable): normal vitals
+        print('Creating vitals for Rahul Verma (stable)...')
+        vc, ac = create_vital_and_alerts(patients[2].id, heart_rate=70, temperature=36.9, spo2=98)
+        print('Created for Rahul Verma:', vc, ac)
 
-        # Escalate one critical alert (Patient B) using DB update so doctor view shows it
-        # Find one critical alert for Patient B
-        critical_alert = Alert.query.filter_by(patient_id=patients[1].id, severity='critical').first()
+        # Escalate one critical alert (Ramesh Kumar) using DB update so doctor view shows it
+        # Find one critical alert for Ramesh Kumar
+        critical_alert = Alert.query.filter_by(patient_id=patients[0].id, severity='critical').first()
         if critical_alert:
             critical_alert.escalated = True
             critical_alert.escalated_at = datetime.now(timezone.utc)
-            critical_alert.escalated_by = nurse.id
+            critical_alert.escalated_by = nurse.id # Nurse escalates
             db.session.commit()
-            print('Escalated alert id', critical_alert.id, 'for Patient B')
+            print('Escalated alert id', critical_alert.id, 'for Ramesh Kumar')
 
         print('\nSeeding complete:')
         print('  Nurse:', nurse.to_dict())

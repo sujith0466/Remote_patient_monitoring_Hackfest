@@ -67,12 +67,18 @@ def create_vital_and_alerts(patient_id, heart_rate=None, temperature=None, spo2=
     # Temperature > 38.0 => critical
     if temperature is not None and temperature > 38.0:
         a = Alert(patient_id=patient.id, severity='critical', message=f'Temperature {temperature}°C — threshold exceeded')
+        a.escalated = True # Auto-escalate critical alerts for demo
+        a.escalated_at = datetime.now(timezone.utc)
+        a.escalated_by = 1 # Assuming demo Nurse ID is 1 for auto-escalation
         db.session.add(a)
         alerts_created.append(a)
 
     # SpO2 < 90 => critical
     if spo2 is not None and spo2 < 90:
         a = Alert(patient_id=patient.id, severity='critical', message=f'SpO₂ {spo2}% — threshold exceeded')
+        a.escalated = True # Auto-escalate critical alerts for demo
+        a.escalated_at = datetime.now(timezone.utc)
+        a.escalated_by = 1 # Assuming demo Nurse ID is 1 for auto-escalation
         db.session.add(a)
         alerts_created.append(a)
 

@@ -1,19 +1,26 @@
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models import Patient, PatientVital, Alert
-from app.utils.auth import require_roles
+from app.models import Patient, PatientVital, Alert, Note
+from app.utils.auth import require_roles, jwt_required, token_required
 from datetime import datetime
+from sqlalchemy import desc
 
 bp = Blueprint('patients', __name__, url_prefix='/patients')
 
 
 @bp.route('/', methods=['GET'])
+@jwt_required(optional=True)
+@token_required
+@require_roles('nurse', 'doctor')
 def list_patients():
     patients = Patient.query.all()
     return jsonify([p.to_dict() for p in patients])
 
 
 @bp.route('/vitals', methods=['GET'])
+@jwt_required(optional=True)
+@token_required
+@require_roles('nurse', 'doctor')
 def list_vitals():
     """Return recent vitals across all patients. Query params: ?limit=100 (default) or ?patient_id=<id>"""
     limit = min(int(request.args.get('limit', 100)), 1000)
@@ -37,14 +44,50 @@ def list_vitals():
 
 
 @bp.route('/<int:patient_id>', methods=['GET'])
+@jwt_required(optional=True)
+@token_required
+@require_roles('nurse', 'doctor')
 def get_patient(patient_id):
     patient = db.session.get(Patient, patient_id)
     if not patient:
         return jsonify({'error': 'patient not found'}), 404
-    return jsonify(patient.to_dict())
+
+    # Fetch recent vitals
+    vitals = PatientVital.query.filter_by(patient_id=patient_id).order_by(desc(PatientVital.timestamp)).limit(10).all()
+    vitals_data = [v.to_dict() for v in vitals]
+
+    # Fetch active alerts
+    alerts = Alert.query.filter_by(patient_id=patient_id, closed=False).order_by(desc(Alert.created_at)).all()
+    alerts_data = []
+    for alert in alerts:
+        alert_dict = alert.to_dict()
+        if alert.escalated_by:
+            escalated_by_user = db.session.get(User, alert.escalated_by)
+            alert_dict['escalated_by_name'] = escalated_by_user.name if escalated_by_user else None
+        if alert.reviewed_by:
+            reviewed_by_user = db.session.get(User, alert.reviewed_by)
+            alert_dict['reviewed_by_name'] = reviewed_by_user.name if reviewed_by_user else None
+        if alert.closed_by:
+            closed_by_user = db.session.get(User, alert.closed_by)
+            alert_dict['closed_by_name'] = closed_by_user.name if closed_by_user else None
+        alerts_data.append(alert_dict)
+
+    # Fetch notes
+    notes = Note.query.filter_by(patient_id=patient_id).order_by(desc(Note.timestamp)).all()
+    notes_data = [note.to_dict() for note in notes]
+
+    patient_data = patient.to_dict()
+    patient_data['vitals'] = vitals_data
+    patient_data['alerts'] = alerts_data
+    patient_data['notes'] = notes_data
+
+    return jsonify(patient_data)
 
 
 @bp.route('/<int:patient_id>/vitals', methods=['GET'])
+@jwt_required(optional=True)
+@token_required
+@require_roles('nurse', 'doctor')
 def get_patient_vitals(patient_id):
     patient = db.session.get(Patient, patient_id)
     if not patient:
@@ -62,6 +105,9 @@ def get_patient_vitals(patient_id):
 
 
 @bp.route('/<int:patient_id>/vitals', methods=['POST'])
+@jwt_required(optional=True)
+@token_required
+@require_roles('nurse') # Only nurses can submit vitals
 def submit_vitals(patient_id):
     """Accepts JSON: { heart_rate, temperature, spo2 } and creates alerts if needed"""
     payload = request.json or {}
@@ -120,6 +166,8 @@ def submit_vitals(patient_id):
 
 
 @bp.route('/<int:patient_id>', methods=['PATCH'])
+@jwt_required(optional=True)
+@token_required
 @require_roles('nurse', 'doctor')
 def update_patient(patient_id):
     """Update patient demographic/details."""

@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { updatePatient } from '../api'
+import { useAuth } from '../context/AuthContext' // Import useAuth
 
 export default function PatientVitalsList({ patients = [], onUpdated }) {
-  const role = localStorage.getItem("carewatch_role") // ✅ simple & reliable
+  const { user, api } = useAuth() // Access user and api from AuthContext
+  const role = user?.role // Get role from authenticated user
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({})
 
@@ -27,7 +28,7 @@ export default function PatientVitalsList({ patients = [], onUpdated }) {
 
   const save = async (id) => {
     try {
-      await updatePatient(id, form)
+      await api.updatePatient(id, form) // Use api.updatePatient
       if (typeof onUpdated === 'function') onUpdated()
       window.dispatchEvent(new Event('patients:updated'))
       cancelEdit()
